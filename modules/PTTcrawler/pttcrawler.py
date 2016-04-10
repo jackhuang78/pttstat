@@ -1,6 +1,7 @@
+#!/usr/bin/python
 #coding=utf-8 
 import re
-import sys
+import os, sys
 import json
 import requests
 import io
@@ -32,6 +33,7 @@ def crawler(PttName,ParsingPage):
         g_id = 0;
  
 	for number  in range(ALLpage, ALLpage-int(ParsingPage),-1):
+            print 'parsing page', number
             res=rs.get('https://www.ptt.cc/bbs/'+PttName+'/index'+str(number)+'.html',verify=False)
             soup = BeautifulSoup(res.text,'html.parser')
 	    for tag in soup.select('div.title'):
@@ -45,11 +47,11 @@ def crawler(PttName,ParsingPage):
                        link='https://www.ptt.cc'+URL
                        #print link
 	               g_id = g_id+1
-		       parseGos(link,g_id)                     
+		       parseGos(URL,link,g_id)                     
 		except:
                     print 'error:',URL
  
-def parseGos(link , g_id):
+def parseGos(url, link , g_id):
         res=rs.get(link,verify=False)
         soup = BeautifulSoup(res.text,'html.parser')
         # author
@@ -83,7 +85,16 @@ def parseGos(link , g_id):
         num , g , b , n ,message = 0,0,0,0,{}
         for tag in soup.select('div.push'):
                 num += 1
-                push_tag = tag.find("span", {'class': 'push-tag'}).text
+                push_tag = tag.find("span", {'class': 'push-tag'}).text.strip()
+                if push_tag == u'推':
+                    push_tag = 'g'
+                    g += 1
+                elif push_tag == u'噓':
+                    push_tag = 'b'
+                    b += 1
+                else:
+                    push_tag = 'n'
+                    n += 1
                 #print "push_tag:",push_tag
                 push_userid = tag.find("span", {'class': 'push-userid'}).text       
                 #print "push_userid:",push_userid
@@ -94,20 +105,16 @@ def parseGos(link , g_id):
                 push_ipdatetime = remove(push_ipdatetime, '\n')
                 #print "push-ipdatetime:",push_ipdatetime 
                 
-                message[num]={"狀態":push_tag.encode('utf-8'),"留言者":push_userid.encode('utf-8'),
-                              "留言內容":push_content.encode('utf-8'),"留言時間":push_ipdatetime.encode('utf-8')}
-                if push_tag == u'推 ':
-                        g += 1
-                elif push_tag == u'噓 ':
-                        b += 1
-                else:
-                        n += 1
+                message[num]={"push_tag":push_tag.encode('utf-8'),"push_userid":push_userid.encode('utf-8'),
+                              "push_content":push_content.encode('utf-8'),"push_datetime":push_ipdatetime.encode('utf-8')}
+                
   
         messageNum = {"g":g,"b":b,"n":n,"all":num}
         # json-data  type(d) dict
           
-        d={ "a_ID":g_id , "b_作者":author.encode('utf-8'), "c_標題":title.encode('utf-8'), "d_日期":date.encode('utf-8'),
-            "e_ip":ip.encode('utf-8'), "f_內文":main_content.encode('utf-8'), "g_推文":message,"h_推文總數":messageNum}
+        d={ "id":g_id , "author":author.encode('utf-8'), "title":title.encode('utf-8'), "date":date.encode('utf-8'),
+            "ip":ip.encode('utf-8'), "content":main_content.encode('utf-8'), "messages":message,"messageNum":messageNum,
+            "url":url.encode('utf-8')}
         json_data = json.dumps(d,ensure_ascii=False,indent=4,sort_keys=True)+','
 	store(json_data) 
 
@@ -130,7 +137,10 @@ def getPageNumber(content) :
 if __name__ == "__main__":  
    PttName = str(sys.argv[1])
    ParsingPage = int(sys.argv[2])
-   FILENAME='data-'+PttName+'-'+datetime.now().strftime('%Y-%m-%d-%H-%M-%S')+'.json'
+   OutDir = 'out/' + str(sys.argv[3])
+   if not os.path.exists(OutDir):
+        os.makedirs(OutDir)
+   FILENAME=OutDir+'/data-'+PttName+'-'+datetime.now().strftime('%Y-%m-%d-%H-%M-%S')+'.json'
    store('[') 
    print 'Start parsing [',PttName,']....'
    crawler(PttName,ParsingPage)
